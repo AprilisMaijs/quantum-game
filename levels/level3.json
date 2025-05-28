@@ -1,0 +1,15 @@
+{
+  "name": "Level 4: Quantum walls",
+  "description": "Quantum walls must be measured to 'lock in' their location. You can tell which ones have a higher probability of being measured there",
+  "layout": [
+    "##########",
+    "#P.......#",
+    "###QQQQQQ#",
+    "#X#......#",
+    "#.######.#",
+    "#.B......#",
+    "#.######.#",
+    "#........#",
+    "##########"
+  ]
+}

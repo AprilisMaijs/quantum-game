@@ -1,0 +1,15 @@
+{
+  "name": "Level 5: Schrödinger’s Box",
+  "description": "Can you sort a linked list? Can you push one around?",
+  "layout": [
+    "##########",
+    "#P.#E#...#",
+    "#..#.#E..#",
+    "#..#.#...#",
+    "#........#",
+    "#........#",
+    "#.#T######",
+    "#....B.TX#",
+    "##########"
+  ]
+}

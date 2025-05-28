@@ -1,0 +1,14 @@
+{
+    "name": "Level 1: Quantum Walls",
+    "description": "Get your box to the quantum tunnel! You are getting out from Dr Schrödinger's basement!",
+    "layout": [
+      "############",
+      "#P.........#",
+      "#..........#",
+      "#....B.....#",
+      "#..........#",
+      "#..........#",
+      "#.........X#",
+      "############"
+    ]
+  }

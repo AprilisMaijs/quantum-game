@@ -1,0 +1,15 @@
+{
+  "name": "Level 6: Quantum walls",
+  "description": "Are ya feeling lucky?",
+  "layout": [
+    "##########",
+    "#P#####..#",
+    "#..#..Q..#",
+    "#.MQ..Q.T#",
+    "#.MQ..Q.T#",
+    "#.MQ..Q.T#",
+    "#.MQ..Q.B#",
+    "#..#..##X#",
+    "##########"
+  ]
+}
