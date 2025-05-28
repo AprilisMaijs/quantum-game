@@ -1,24 +1,11 @@
-"""
-Simple Baba Is You–Style Puzzle Game
-
-Dependencies:
-  - Python 3.x
-  - pygame (install via `pip install pygame`)
-
-Run:
-  `python baba_game.py`
-"""
-
 import pygame
 import sys
 import os
-import glob
 import json
-
-# Configuration
-TILE_SIZE = 32        # smaller tiles
-GRID_WIDTH = 20       # double the original width
-GRID_HEIGHT = 16      # double the original height
+# Constants
+TILE_SIZE = 32        # tile size
+GRID_WIDTH = 20       # grid dimensions
+GRID_HEIGHT = 16
 SCREEN_WIDTH = TILE_SIZE * GRID_WIDTH
 SCREEN_HEIGHT = TILE_SIZE * GRID_HEIGHT
 FPS = 60
@@ -32,12 +19,13 @@ UNMOVABLE_COLOR = (100, 100, 200)
 BOX_COLOR = (200, 200, 50)
 GOAL_COLOR = (50, 200, 200)
 
-# Base Entity class
+# Global selection (entanglement)
+selected_box = None
+
+# Entity classes
 class Entity:
     def __init__(self, x, y, color):
-        self.x = x
-        self.y = y
-        self.color = color
+        self.x, self.y, self.color = x, y, color
 
     def draw(self, surface):
         rect = pygame.Rect(self.x * TILE_SIZE, self.y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
@@ -46,190 +34,201 @@ class Entity:
     def can_move(self):
         return False
 
-# Movable block
 class MovableBlock(Entity):
-    def __init__(self, x, y):
+    def __init__(self, x, y, entanglable=False):
         super().__init__(x, y, MOVABLE_COLOR)
+        self.entanglable = entanglable
+        self.entangled_with = None
+        self.selected = False
 
     def can_move(self):
         return True
 
-# Unmovable tile
 class UnmovableTile(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, UNMOVABLE_COLOR)
 
-# Special Schrödinger's Box (movable)
 class SchrodingerBox(MovableBlock):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.color = BOX_COLOR
 
-# Goal tile
 class Goal(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, GOAL_COLOR)
 
-# Player
 class Player(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, PLAYER_COLOR)
 
     def move(self, dx, dy, grid):
-        target_x, target_y = self.x + dx, self.y + dy
-        if not grid.in_bounds(target_x, target_y): return
-        occupants = grid.get_entities(target_x, target_y)
-        # allow stepping on goals
-        if not occupants or any(isinstance(o, Goal) for o in occupants):
-            grid.move_entity(self, target_x, target_y)
+        tx, ty = self.x + dx, self.y + dy
+        if not grid.in_bounds(tx, ty):
+            return
+        occ = grid.get_entities(tx, ty)
+        if not occ or any(isinstance(o, Goal) for o in occ):
+            grid.move_entity(self, tx, ty)
         else:
-            first = occupants[0]
+            first = occ[0]
             if first.can_move() and grid.push(first, dx, dy):
-                grid.move_entity(self, target_x, target_y)
+                grid.move_entity(self, tx, ty)
 
 # Grid manager
 class Grid:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.cells = [[[] for _ in range(height)] for _ in range(width)]
+    def __init__(self, w, h):
+        self.width, self.height = w, h
+        self.cells = [[[] for _ in range(h)] for _ in range(w)]
 
     def in_bounds(self, x, y):
         return 0 <= x < self.width and 0 <= y < self.height
 
-    def add_entity(self, entity):
-        self.cells[entity.x][entity.y].append(entity)
+    def add_entity(self, e):
+        self.cells[e.x][e.y].append(e)
 
-    def remove_entity(self, entity):
-        self.cells[entity.x][entity.y].remove(entity)
+    def remove_entity(self, e):
+        self.cells[e.x][e.y].remove(e)
 
-    def move_entity(self, entity, x, y):
-        self.remove_entity(entity)
-        entity.x, entity.y = x, y
-        self.add_entity(entity)
+    def move_entity(self, e, x, y):
+        self.remove_entity(e)
+        e.x, e.y = x, y
+        self.add_entity(e)
 
     def get_entities(self, x, y):
         return list(self.cells[x][y])
 
-    def push(self, entity, dx, dy):
-        nx, ny = entity.x + dx, entity.y + dy
-        if not self.in_bounds(nx, ny): return False
-        occupants = self.get_entities(nx, ny)
-        # allow pushing onto goal
-        if any(isinstance(o, Goal) for o in occupants):
-            self.move_entity(entity, nx, ny)
+    def _handle_entanglement(self, e, dx, dy):
+        if hasattr(e, 'entangled_with') and e.entangled_with:
+            p = e.entangled_with
+            nx, ny = p.x + dx, p.y + dy
+            if self.in_bounds(nx, ny):
+                self.move_entity(p, nx, ny)
+
+    def push(self, e, dx, dy):
+        nx, ny = e.x + dx, e.y + dy
+        if not self.in_bounds(nx, ny):
+            return False
+        occ = self.get_entities(nx, ny)
+        if any(isinstance(o, Goal) for o in occ):
+            self.move_entity(e, nx, ny)
+            self._handle_entanglement(e, dx, dy)
             return True
-        # if empty, simply move
-        if not occupants:
-            self.move_entity(entity, nx, ny)
+        if not occ:
+            self.move_entity(e, nx, ny)
+            self._handle_entanglement(e, dx, dy)
             return True
-        # try to push chain
-        first = occupants[0]
+        first = occ[0]
         if first.can_move() and self.push(first, dx, dy):
-            self.move_entity(entity, nx, ny)
+            self.move_entity(e, nx, ny)
+            self._handle_entanglement(e, dx, dy)
             return True
         return False
 
-# Level definition helper
+# Helpers for level loading
+
 def load_level(grid, layout):
-    """
-    layout: list of strings with characters:
-      '#': unmovable tile
-      '.': empty
-      'P': player
-      'B': schrodinger box
-      'X': goal
-      'M': movable block
-    """
     mapping = {
-        '#': UnmovableTile,
-        'P': Player,
-        'B': SchrodingerBox,
-        'X': Goal,
-        'M': MovableBlock,
+        '#': lambda x,y: UnmovableTile(x,y),
+        'P': lambda x,y: Player(x,y),
+        'B': lambda x,y: SchrodingerBox(x,y),
+        'X': lambda x,y: Goal(x,y),
+        'M': lambda x,y: MovableBlock(x,y, entanglable=False),
+        'E': lambda x,y: MovableBlock(x,y, entanglable=True),
     }
     for y, row in enumerate(layout):
         for x, ch in enumerate(row):
             if ch in mapping:
                 grid.add_entity(mapping[ch](x, y))
 
-# Load all level JSONs
-def load_all_levels(path='levels'):
-    level_files = sorted(glob.glob(os.path.join(path, '*.json')))
-    levels = []
+# Main entry for menu integration
+def run_levels(level_files):
+    # Initialize Pygame
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    clock = pygame.time.Clock()
+
+    # Load all layouts
+    all_levels = []
     for fn in level_files:
-        with open(fn, 'r') as f:
+        with open(fn) as f:
             data = json.load(f)
-            levels.append(data.get('layout', []))
-    return levels
+            all_levels.append(data.get('layout', []))
 
-# Initialize pygame
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-clock = pygame.time.Clock()
+    def start_level(idx):
+        g = Grid(GRID_WIDTH, GRID_HEIGHT)
+        load_level(g, all_levels[idx])
+        return g
 
-# Load levels and start with the first
-all_levels = load_all_levels()
-current_level = 0
+    current = 0
+    grid = start_level(current)
 
-def start_level(index):
-    grid = Grid(GRID_WIDTH, GRID_HEIGHT)
-    layout = all_levels[index]
-    load_level(grid, layout)
-    return grid
+    def check_win(g):
+        for x in range(g.width):
+            for y in range(g.height):
+                ents = g.get_entities(x, y)
+                if any(isinstance(e, SchrodingerBox) for e in ents) and any(isinstance(e, Goal) for e in ents):
+                    return True
+        return False
 
-grid = start_level(current_level)
-
-# Main game loop
-def check_win(grid):
-    for x in range(grid.width):
-        for y in range(grid.height):
-            ents = grid.get_entities(x, y)
-            if any(isinstance(e, SchrodingerBox) for e in ents) and any(isinstance(e, Goal) for e in ents):
-                return True
-    return False
-
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
+    running = True
+    global selected_box
+    while running:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
                 running = False
-            for ents in [grid.get_entities(x,y) for x in range(grid.width) for y in range(grid.height)]:
-                for e in ents:
-                    if isinstance(e, Player):
-                        if event.key == pygame.K_UP:
-                            e.move(0, -1, grid)
-                        elif event.key == pygame.K_DOWN:
-                            e.move(0, 1, grid)
-                        elif event.key == pygame.K_LEFT:
-                            e.move(-1, 0, grid)
-                        elif event.key == pygame.K_RIGHT:
-                            e.move(1, 0, grid)
+            elif ev.type == pygame.MOUSEBUTTONDOWN:
+                mx,my = pygame.mouse.get_pos()
+                gx,gy = mx//TILE_SIZE, my//TILE_SIZE
+                if grid.in_bounds(gx, gy):
+                    for o in grid.get_entities(gx, gy):
+                        if isinstance(o, MovableBlock) and o.entanglable:
+                            if selected_box is None:
+                                selected_box = o; o.selected = True
+                            else:
+                                if o is not selected_box:
+                                    selected_box.entangled_with = o
+                                    o.entangled_with = selected_box
+                                selected_box.selected = False
+                                selected_box = None
+                            break
+            elif ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    running = False
+                else:
+                    for ents in [grid.get_entities(x,y) for x in range(GRID_WIDTH) for y in range(GRID_HEIGHT)]:
+                        for e in ents:
+                            if isinstance(e, Player):
+                                if ev.key == pygame.K_UP:    e.move(0, -1, grid)
+                                if ev.key == pygame.K_DOWN:  e.move(0, 1, grid)
+                                if ev.key == pygame.K_LEFT:  e.move(-1, 0, grid)
+                                if ev.key == pygame.K_RIGHT: e.move(1, 0, grid)
 
-    screen.fill(BLACK)
-    for x in range(GRID_WIDTH + 1):
-        pygame.draw.line(screen, WHITE, (x * TILE_SIZE, 0), (x * TILE_SIZE, SCREEN_HEIGHT))
-    for y in range(GRID_HEIGHT + 1):
-        pygame.draw.line(screen, WHITE, (0, y * TILE_SIZE), (SCREEN_WIDTH, y * TILE_SIZE))
-    for x in range(GRID_WIDTH):
-        for y in range(GRID_HEIGHT):
-            for entity in grid.get_entities(x, y):
-                entity.draw(screen)
+        # Draw
+        screen.fill(BLACK)
+        for x in range(GRID_WIDTH+1): pygame.draw.line(screen, WHITE, (x*TILE_SIZE,0),(x*TILE_SIZE,SCREEN_HEIGHT))
+        for y in range(GRID_HEIGHT+1): pygame.draw.line(screen, WHITE, (0,y*TILE_SIZE),(SCREEN_WIDTH,y*TILE_SIZE))
+        for x in range(GRID_WIDTH):
+            for y in range(GRID_HEIGHT):
+                for ent in grid.get_entities(x,y): ent.draw(screen)
+        # draw entangle highlights
+        for x in range(GRID_WIDTH):
+            for y in range(GRID_HEIGHT):
+                for e in grid.get_entities(x,y):
+                    if isinstance(e, MovableBlock) and getattr(e,'selected',False):
+                        pygame.draw.rect(screen, (255,0,0), (e.x*TILE_SIZE,e.y*TILE_SIZE,TILE_SIZE,TILE_SIZE),3)
+                    if isinstance(e, MovableBlock) and e.entangled_with:
+                        p = e.entangled_with
+                        start = (e.x*TILE_SIZE+TILE_SIZE//2,e.y*TILE_SIZE+TILE_SIZE//2)
+                        end   = (p.x*TILE_SIZE+TILE_SIZE//2,p.y*TILE_SIZE+TILE_SIZE//2)
+                        pygame.draw.line(screen,(255,0,0),start,end,2)
 
-    pygame.display.flip()
-    clock.tick(FPS)
+        pygame.display.flip()
+        clock.tick(FPS)
 
-    if check_win(grid):
-        print(f"Level {current_level+1} complete!")
-        current_level += 1
-        if current_level < len(all_levels):
-            grid = start_level(current_level)
-        else:
-            print("All levels complete!")
-            running = False
+        if check_win(grid):
+            current += 1
+            if current < len(all_levels):
+                grid = start_level(current)
+            else:
+                running = False
 
-pygame.quit()
-sys.exit()
+    pygame.quit()
