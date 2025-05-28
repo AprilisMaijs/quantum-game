@@ -1,14 +1,15 @@
 {
-    "name": "Level 2: This is more complicated",
-    "description": "You can push around red and orange blocks.",
-    "layout": [
-      "############",
-      "#P##########",
-      "#.###..#####",
-      "#.M....#####",
-      "#.####.#####",
-      "#.####B#####",
-      "#.........X#",
-      "############"
+  "name": "Level 2: This is more complicated...",
+  "description": "You can push around RED blocks.",
+  "layout": [
+    "##########",
+    "#P########",
+    "#.###..###",
+    "#.M....###",
+    "#.####.###",
+    "#.####B###",
+    "#.......X#",
+    "##########",
+    "##########"
     ]
   }

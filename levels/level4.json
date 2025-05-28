@@ -1,6 +1,6 @@
 {
-  "name": "Level 5: Schrödinger’s Box",
-  "description": "Can you sort a linked list? Can you push one around?",
+  "name": "Level 5: Linked List",
+  "description": "ORANGE blocks can be clicked to entangle their positions!",
   "layout": [
     "##########",
     "#P.#E#...#",

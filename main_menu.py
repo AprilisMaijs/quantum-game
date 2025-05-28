@@ -31,7 +31,7 @@ menu_options = ['Play']
 
 def draw_menu(selected):
     screen.fill(BLACK)
-    title_surf = title_font.render('Baba QM', True, WHITE)
+    title_surf = title_font.render("Escape The Experiment", True, WHITE)
     screen.blit(title_surf, (SCREEN_WIDTH//2 - title_surf.get_width()//2, 100))
 
     option = menu_options[0]

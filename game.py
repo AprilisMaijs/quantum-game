@@ -1,9 +1,4 @@
-# Draw quantum goal probability clouds or collapsed state
-if quantum_goal:
-    quantum_goal.draw(screen)
-    import pygame
-import sys
-import os
+import pygame
 import json
 import random
 import math
@@ -168,6 +163,42 @@ class Goal(Entity):
         super().__init__(x, y, GOAL_COLOR)
 
 
+class QuantumParticle:
+    """Goal that exists in quantum superposition across multiple positions"""
+
+    def __init__(self, positions, probabilities):
+        self.positions = positions
+        self.probabilities = probabilities
+        self.collapsed = False
+        self.chosen_position = None
+
+    def draw(self, surface):
+        if not self.collapsed:
+            # Draw probability clouds for each position
+            temp = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            for (x, y), p in zip(self.positions, self.probabilities):
+                center = (x * TILE_SIZE + TILE_SIZE // 2, y * TILE_SIZE + TILE_SIZE // 2)
+                radius = int((TILE_SIZE // 2) * math.sqrt(p))
+                alpha = int(200 * p)
+                pygame.draw.circle(temp, (GOAL_COLOR[0], GOAL_COLOR[1], GOAL_COLOR[2], alpha), center, radius)
+            surface.blit(temp, (0, 0))
+        else:
+            # Draw collapsed position as normal goal
+            x, y = self.chosen_position
+            rect = pygame.Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+            pygame.draw.rect(surface, GOAL_COLOR, rect)
+
+    def measure(self, grid):
+        """Collapse the quantum state and place a goal"""
+        if self.collapsed:
+            return self.chosen_position
+
+        self.chosen_position = random.choices(self.positions, weights=self.probabilities, k=1)[0]
+        self.collapsed = True
+        grid.add_entity(Goal(self.chosen_position[0], self.chosen_position[1]))
+        return self.chosen_position
+
+
 class Player(Entity):
     """The player character"""
 
@@ -328,7 +359,6 @@ class Grid:
 
 def load_level(grid, layout):
     """Load level layout into the grid"""
-    # Character to entity mapping
     entity_map = {
         '#': lambda x, y: UnmovableTile(x, y),
         'P': lambda x, y: Player(x, y),
@@ -372,7 +402,7 @@ def wrap_text(text, font, max_width):
 
 
 def show_level_intro(screen, clock, level_data, level_number):
-    """Display level introduction with fade-in animation"""
+    """Display level info"""
     font_title = pygame.font.Font(None, 48)
     font_desc = pygame.font.Font(None, 28)
     font_continue = pygame.font.Font(None, 24)
@@ -457,7 +487,19 @@ def run_levels(level_files):
         """Initialize a level from layout data"""
         grid = Grid(GRID_WIDTH, GRID_HEIGHT)
         load_level(grid, all_levels[index].get('layout', []))
-        return grid
+
+        # find the player and stash it
+        player = None
+        for x in range(grid.width):
+            for y in range(grid.height):
+                for e in grid.get_entities(x, y):
+                    if isinstance(e, Player):
+                        player = e
+                        break
+                if player: break
+            if player: break
+
+        return grid, player
 
     current_level = 0
 
@@ -466,7 +508,26 @@ def run_levels(level_files):
         pygame.quit()
         return
 
-    grid = create_level(current_level)
+    grid, player = create_level(current_level)
+
+    # Setup quantum goal if multiple goals exist
+    goal_positions = []
+    for x in range(grid.width):
+        for y in range(grid.height):
+            for entity in grid.get_entities(x, y):
+                if isinstance(entity, Goal):
+                    goal_positions.append((x, y))
+
+    quantum_goal = None
+    if len(goal_positions) > 1:
+        # Remove regular goals and create quantum particle
+        for pos in goal_positions:
+            for entity in grid.get_entities(pos[0], pos[1]):
+                if isinstance(entity, Goal):
+                    grid.remove_entity(entity)
+
+        probabilities = [1 / len(goal_positions)] * len(goal_positions)
+        quantum_goal = QuantumParticle(goal_positions, probabilities)
 
     def check_victory(grid):
         """Check if all boxes are on goals"""
@@ -500,23 +561,41 @@ def run_levels(level_files):
 
                 elif event.key == pygame.K_r:
                     # Reset current level
-                    grid = create_level(current_level)
+                    grid, player = create_level(current_level)
                     selected_box = None
 
-                else:
-                    # Handle player movement
-                    for x in range(GRID_WIDTH):
-                        for y in range(GRID_HEIGHT):
+                    # Recreate quantum goal
+                    goal_positions = []
+                    for x in range(grid.width):
+                        for y in range(grid.height):
                             for entity in grid.get_entities(x, y):
-                                if isinstance(entity, Player):
-                                    if event.key == pygame.K_UP:
-                                        entity.move(0, -1, grid)
-                                    elif event.key == pygame.K_DOWN:
-                                        entity.move(0, 1, grid)
-                                    elif event.key == pygame.K_LEFT:
-                                        entity.move(-1, 0, grid)
-                                    elif event.key == pygame.K_RIGHT:
-                                        entity.move(1, 0, grid)
+                                if isinstance(entity, Goal):
+                                    goal_positions.append((x, y))
+
+                    quantum_goal = None
+                    if len(goal_positions) > 1:
+                        for pos in goal_positions:
+                            for entity in grid.get_entities(pos[0], pos[1]):
+                                if isinstance(entity, Goal):
+                                    grid.remove_entity(entity)
+                        quantum_goal = QuantumParticle(goal_positions, [1 / len(goal_positions)] * len(goal_positions))
+
+                elif event.key == pygame.K_m and quantum_goal:
+                    # Measure quantum particle
+                    collapsed_pos = quantum_goal.measure(grid)
+                    print(f"Quantum goal collapsed to position {collapsed_pos}")
+
+                elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+                    dx, dy = 0, 0
+                    if event.key == pygame.K_UP:
+                        dy = -1
+                    elif event.key == pygame.K_DOWN:
+                        dy = 1
+                    elif event.key == pygame.K_LEFT:
+                        dx = -1
+                    elif event.key == pygame.K_RIGHT:
+                        dx = 1
+                    player.move(dx, dy, grid)
 
         # Render everything
         screen.fill(BLACK)
@@ -553,12 +632,13 @@ def run_levels(level_files):
 
         # Draw control instructions
         instructions = [
-            "Arrow Keys: Move",
-            "Click: Entangle blocks (E)",
+            "Arrow keys: Move",
             "R: Reset level",
-            "Purple walls: Quantum superposition",
-            "Walk into them to collapse!"
+            "Click: Entangle two ORANGE blocks",
+            "ESC: Quit game"
         ]
+
+        pygame.draw.rect(screen, BLACK, (5, SCREEN_HEIGHT - 145, 400, 100))
 
         for i, instruction in enumerate(instructions):
             text = font.render(instruction, True, WHITE)
@@ -576,8 +656,24 @@ def run_levels(level_files):
                     running = False
                     break
 
-                grid = create_level(current_level)
+                grid, player = create_level(current_level)
                 selected_box = None
+
+                # Setup quantum goal for new level
+                goal_positions = []
+                for x in range(grid.width):
+                    for y in range(grid.height):
+                        for entity in grid.get_entities(x, y):
+                            if isinstance(entity, Goal):
+                                goal_positions.append((x, y))
+
+                quantum_goal = None
+                if len(goal_positions) > 1:
+                    for pos in goal_positions:
+                        for entity in grid.get_entities(pos[0], pos[1]):
+                            if isinstance(entity, Goal):
+                                grid.remove_entity(entity)
+                    quantum_goal = QuantumParticle(goal_positions, [1 / len(goal_positions)] * len(goal_positions))
             else:
                 running = False
 

@@ -1,14 +1,15 @@
 {
-    "name": "Level 1: Quantum Walls",
-    "description": "Get your box to the quantum tunnel! You are getting out from Dr Schrödinger's basement!",
+    "name": "Level 1: Getting out",
+    "description": "Get your YELLOW box to the BLUE quantum tunnel! You are getting out from Dr Schrödinger's basement!",
     "layout": [
-      "############",
-      "#P.........#",
-      "#..........#",
-      "#....B.....#",
-      "#..........#",
-      "#..........#",
-      "#.........X#",
-      "############"
+    "##########",
+    "#........#",
+    "#........#",
+    "#........#",
+    "#P..B..X.#",
+    "#........#",
+    "#........#",
+    "#........#",
+    "##########"
     ]
   }
